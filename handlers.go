@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 )
@@ -34,3 +35,56 @@ func (cfg *apiConfig) HandlerReset(w http.ResponseWriter, r *http.Request) {
 	cfg.reset()
 	w.WriteHeader(http.StatusOK)
 }
+
+func HandlerValidate(w http.ResponseWriter, r *http.Request) {
+	type chirpText struct {
+	  Text string `json:"body"`
+	}
+	
+	type returnJson struct {
+	  Err   string `json:"error,omitempty"`
+	  Valid bool   `json:"valid"`
+	}
+  
+	if r.Method != http.MethodPost {
+	  w.WriteHeader(http.StatusMethodNotAllowed)
+	  return
+	}
+	decoder := json.NewDecoder(r.Body)
+	message := chirpText{}
+	err := decoder.Decode(&message) 
+	if err != nil {
+	  fmt.Println(err)
+	  w.WriteHeader(500)
+	  return
+	}
+	
+	resp := returnJson{
+		Err: "",
+		Valid: true,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	
+	if len(message.Text) > 140 {
+		resp.Err = "Chirp is too long"
+		resp.Valid = false
+	}
+
+	respBody, err := json.Marshal(resp)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if resp.Valid == false {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write(respBody)
+		return
+	}
+	
+	w.Write(respBody)
+	return
+  }
+  
