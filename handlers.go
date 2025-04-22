@@ -38,38 +38,34 @@ func (cfg *apiConfig) HandlerReset(w http.ResponseWriter, r *http.Request) {
 
 func HandlerValidate(w http.ResponseWriter, r *http.Request) {
 	type chirpText struct {
-	  Text string `json:"body"`
-	}
-	
-	type returnJson struct {
-	  Err   string `json:"error,omitempty"`
-	  Valid bool   `json:"valid"`
+		Text string `json:"body"`
 	}
 
-	type returnClean struct {
-		CleanedBody string `json:"cleaned_body"`
+	type returnJson struct {
+		Err   string `json:"error,omitempty"`
+		Valid bool   `json:"valid"`
 	}
-  
+
 	if r.Method != http.MethodPost {
-	  w.WriteHeader(http.StatusMethodNotAllowed)
-	  return
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
 	}
 	decoder := json.NewDecoder(r.Body)
 	message := chirpText{}
-	err := decoder.Decode(&message) 
+	err := decoder.Decode(&message)
 	if err != nil {
-	  fmt.Println(err)
-	  w.WriteHeader(500)
-	  return
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
 	}
-	
+
 	resp := returnJson{
-		Err: "",
+		Err:   "",
 		Valid: true,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	if len(message.Text) > 140 {
 		resp.Err = "Chirp is too long"
 		resp.Valid = false
@@ -88,12 +84,45 @@ func HandlerValidate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cleanJson := returnClean{
-		CleanedBody: badWordsReplace(message.Text),
-	}
-
-	respBody, err = json.Marshal(cleanJson)
 	w.Write(respBody)
 	return
-  }
-  
+}
+
+func (cfg *apiConfig) HandlerAddUser(w http.ResponseWriter, r *http.Request) {
+	type info struct {
+		Email string `json:"email"`
+	}
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	decoder := json.NewDecoder(r.Body)
+	user := info{}
+	err := decoder.Decode(&user)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	newUser, err := cfg.queries.CreateUser(r.Context(), user.Email)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	resp, err := json.Marshal(newUser)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.Write(resp)
+	return
+}
