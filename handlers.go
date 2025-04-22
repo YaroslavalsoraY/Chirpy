@@ -45,6 +45,10 @@ func HandlerValidate(w http.ResponseWriter, r *http.Request) {
 	  Err   string `json:"error,omitempty"`
 	  Valid bool   `json:"valid"`
 	}
+
+	type returnClean struct {
+		CleanedBody string `json:"cleaned_body"`
+	}
   
 	if r.Method != http.MethodPost {
 	  w.WriteHeader(http.StatusMethodNotAllowed)
@@ -83,7 +87,12 @@ func HandlerValidate(w http.ResponseWriter, r *http.Request) {
 		w.Write(respBody)
 		return
 	}
-	
+
+	cleanJson := returnClean{
+		CleanedBody: badWordsReplace(message.Text),
+	}
+
+	respBody, err = json.Marshal(cleanJson)
 	w.Write(respBody)
 	return
   }
