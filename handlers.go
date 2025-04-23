@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/YaroslavalsoraY/Chirpy/internal/database"
+	"github.com/google/uuid"
 )
 
 func HandlerHealtzh(w http.ResponseWriter, r *http.Request) {
@@ -42,14 +46,20 @@ func (cfg *apiConfig) HandlerReset(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func HandlerValidate(w http.ResponseWriter, r *http.Request) {
-	type chirpText struct {
+func (cfg *apiConfig) HandlerCreateChirp(w http.ResponseWriter, r *http.Request) {
+	type chirp struct {
 		Text string `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
 	}
 
 	type returnJson struct {
+		InValid bool   `json:"valid,omitempty"`
 		Err   string `json:"error,omitempty"`
-		Valid bool   `json:"valid"`
+		Body string `json:"body,omitempty"`
+		CreatedAt time.Time `json:"created_at,omitempty"`
+		UpdatedAt time.Time `json:"updated_at,omitempty"`
+		ID    uuid.UUID    `json:"id,omitempty"`
+		UserID uuid.UUID `json:"user_id,omitempty"`
 	}
 
 	if r.Method != http.MethodPost {
@@ -57,8 +67,8 @@ func HandlerValidate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	decoder := json.NewDecoder(r.Body)
-	message := chirpText{}
-	err := decoder.Decode(&message)
+	newChirp := chirp{}
+	err := decoder.Decode(&newChirp)
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(500)
@@ -67,14 +77,14 @@ func HandlerValidate(w http.ResponseWriter, r *http.Request) {
 
 	resp := returnJson{
 		Err:   "",
-		Valid: true,
+		InValid: false,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 
-	if len(message.Text) > 140 {
+	if len(newChirp.Text) > 140 {
 		resp.Err = "Chirp is too long"
-		resp.Valid = false
+		resp.InValid = true
 	}
 
 	respBody, err := json.Marshal(resp)
@@ -84,12 +94,34 @@ func HandlerValidate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if resp.Valid == false {
+	if resp.InValid == true {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write(respBody)
 		return
 	}
 
+	arg := database.InsertChirpParams{
+		Body: newChirp.Text,
+		UserID: newChirp.UserID,
+	}
+	returnedChirp, err := cfg.queries.InsertChirp(r.Context(), arg)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	response := returnJson{
+		ID: returnedChirp.ID,
+		CreatedAt: returnedChirp.CreatedAt,
+		UpdatedAt: returnedChirp.UpdatedAt,
+		Body: returnedChirp.Body,
+		UserID: returnedChirp.UserID,
+	}
+
+	respBody, err = json.Marshal(response)
+
+	w.WriteHeader(http.StatusCreated)
 	w.Write(respBody)
 	return
 }
@@ -98,6 +130,14 @@ func (cfg *apiConfig) HandlerAddUser(w http.ResponseWriter, r *http.Request) {
 	type info struct {
 		Email string `json:"email"`
 	}
+
+	type User struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+	}
+
 
 	if r.Method != http.MethodPost {
 		w.WriteHeader(500)
@@ -122,7 +162,14 @@ func (cfg *apiConfig) HandlerAddUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := json.Marshal(newUser)
+	respUser := User{
+		ID: newUser.ID,
+		CreatedAt: newUser.CreatedAt.Time,
+		UpdatedAt: newUser.UpdatedAt.Time,
+		Email: newUser.Email,
+	}
+
+	resp, err := json.Marshal(respUser)
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(500)

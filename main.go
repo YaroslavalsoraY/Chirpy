@@ -42,11 +42,11 @@ func main() {
 	mux.Handle("/", conf.middlewareMetricsInc(baseHandler))
 	mux.Handle("/app/", conf.middlewareMetricsInc(http.StripPrefix("/app", baseHandler)))
 
-	mux.HandleFunc("/api/healthz", HandlerHealtzh)
-	mux.HandleFunc("/admin/metrics", conf.HandlerMetrics)
-	mux.HandleFunc("/admin/reset", conf.HandlerReset)
-	mux.HandleFunc("/api/validate_chirp", HandlerValidate)
-	mux.HandleFunc("/api/users", conf.HandlerAddUser)
+	mux.HandleFunc("GET /api/healthz", HandlerHealtzh)
+	mux.HandleFunc("GET /admin/metrics", conf.HandlerMetrics)
+	mux.HandleFunc("POST /admin/reset", conf.HandlerReset)
+	mux.HandleFunc("POST /api/chirps", conf.HandlerCreateChirp)
+	mux.HandleFunc("POST /api/users", conf.HandlerAddUser)
 
 	server := &http.Server{
 		Addr:    ":8080",
