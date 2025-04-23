@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	queries        *database.Queries
+	platform		string
 }
 
 func main() {
@@ -26,9 +28,12 @@ func main() {
 	dbURL := os.Getenv("DB_URL")
 	db, err := sql.Open("postgres", dbURL)
 
+	envPlatform := os.Getenv("PLATFORM")
+
 	conf := apiConfig{
 		fileserverHits: atomic.Int32{},
 		queries:        database.New(db),
+		platform: envPlatform,
 	}
 
 	baseHandler := http.FileServer(http.Dir("."))
@@ -62,6 +67,7 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	})
 }
 
-func (cfg *apiConfig) reset() {
+func (cfg *apiConfig) reset(cont context.Context) {
 	cfg.fileserverHits.Swap(0)
+	cfg.queries.DeleteAllUsers(cont)
 }

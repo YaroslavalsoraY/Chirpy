@@ -32,7 +32,13 @@ func (cfg *apiConfig) HandlerReset(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	cfg.reset()
+
+	if cfg.platform != "dev" {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	cfg.reset(r.Context())
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -123,6 +129,7 @@ func (cfg *apiConfig) HandlerAddUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.WriteHeader(201)
 	w.Write(resp)
 	return
 }
