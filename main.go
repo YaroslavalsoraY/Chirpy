@@ -17,6 +17,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	queries        *database.Queries
 	platform       string
+	secretJWT      string
 }
 
 func main() {
@@ -30,10 +31,13 @@ func main() {
 
 	envPlatform := os.Getenv("PLATFORM")
 
+	secretJWT := os.Getenv("SECRET_JWT")
+
 	conf := apiConfig{
 		fileserverHits: atomic.Int32{},
 		queries:        database.New(db),
 		platform:       envPlatform,
+		secretJWT:      secretJWT,
 	}
 
 	baseHandler := http.FileServer(http.Dir("."))
@@ -48,9 +52,12 @@ func main() {
 	mux.HandleFunc("GET /api/chirps/{chirpID}", conf.HandlerGetOneChirp)
 
 	mux.HandleFunc("POST /admin/reset", conf.HandlerReset)
+
 	mux.HandleFunc("POST /api/chirps", conf.HandlerCreateChirp)
 	mux.HandleFunc("POST /api/users", conf.HandlerAddUser)
 	mux.HandleFunc("POST /api/login", conf.HandlerLogin)
+	mux.HandleFunc("POST /api/refresh", conf.HandlerRefresh)
+	mux.HandleFunc("POST /api/revoke", conf.HandlerRevoke)
 
 	server := &http.Server{
 		Addr:    ":8080",

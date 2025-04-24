@@ -49,8 +49,7 @@ func (cfg *apiConfig) HandlerReset(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) HandlerCreateChirp(w http.ResponseWriter, r *http.Request) {
 	type chirp struct {
-		Text   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Text string `json:"body"`
 	}
 
 	type returnJson struct {
@@ -63,13 +62,23 @@ func (cfg *apiConfig) HandlerCreateChirp(w http.ResponseWriter, r *http.Request)
 		UserID    uuid.UUID `json:"user_id,omitempty"`
 	}
 
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
+
+	userID, err := auth.ValidateJWT(token, cfg.secretJWT)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
 	decoder := json.NewDecoder(r.Body)
 	newChirp := chirp{}
-	err := decoder.Decode(&newChirp)
+	err = decoder.Decode(&newChirp)
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(500)
@@ -105,7 +114,7 @@ func (cfg *apiConfig) HandlerCreateChirp(w http.ResponseWriter, r *http.Request)
 
 	arg := database.InsertChirpParams{
 		Body:   newChirp.Text,
-		UserID: newChirp.UserID,
+		UserID: userID,
 	}
 	returnedChirp, err := cfg.queries.InsertChirp(r.Context(), arg)
 	if err != nil {
@@ -148,11 +157,11 @@ func (cfg *apiConfig) HandlerGetOneChirp(w http.ResponseWriter, r *http.Request)
 	chirp, err := cfg.queries.GetOneChirp(r.Context(), chirpID)
 
 	respChirp := returnChirp{
-		ID: chirp.ID,
+		ID:        chirp.ID,
 		CreatedAt: chirp.CreatedAt,
 		UpdatedAt: chirp.UpdatedAt,
-		Body: chirp.Body,
-		UserID: chirp.UserID,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
 	}
 
 	respData, err := json.Marshal(respChirp)
@@ -184,11 +193,11 @@ func (cfg *apiConfig) HandlerGetChirps(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, el := range chirps {
 		returnChirps = append(returnChirps, returnChirp{
-			ID: el.ID,
+			ID:        el.ID,
 			CreatedAt: el.CreatedAt,
 			UpdatedAt: el.UpdatedAt,
-			Body: el.Body,
-			UserID: el.UserID,
+			Body:      el.Body,
+			UserID:    el.UserID,
 		})
 	}
 
@@ -204,7 +213,7 @@ func (cfg *apiConfig) HandlerGetChirps(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) HandlerAddUser(w http.ResponseWriter, r *http.Request) {
 	type info struct {
-		Email string `json:"email"`
+		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 
@@ -239,7 +248,7 @@ func (cfg *apiConfig) HandlerAddUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	args := database.CreateUserParams{
-		Email: user.Email,
+		Email:          user.Email,
 		HashedPassword: hash,
 	}
 
@@ -269,21 +278,26 @@ func (cfg *apiConfig) HandlerAddUser(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (cfg *apiConfig) HandlerLogin(w http.ResponseWriter, r *http.Request){
-	type insertData struct{
+func (cfg *apiConfig) HandlerLogin(w http.ResponseWriter, r *http.Request) {
+	type insertData struct {
 		Password string `json:"password"`
 		Email    string `json:"email"`
+		Expires  int
 	}
 
 	type User struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
+		ID           uuid.UUID `json:"id"`
+		CreatedAt    time.Time `json:"created_at"`
+		UpdatedAt    time.Time `json:"updated_at"`
+		Email        string    `json:"email"`
+		Token        string    `json:"token"`
+		RefreshToken string    `json:"refresh_token"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
-	authData := insertData{}
+	authData := insertData{
+		Expires: 3600,
+	}
 	err := decoder.Decode(&authData)
 	if err != nil {
 		fmt.Println(err)
@@ -297,19 +311,42 @@ func (cfg *apiConfig) HandlerLogin(w http.ResponseWriter, r *http.Request){
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	
+
 	err = auth.CheckPasswordHash(userInfo.HashedPassword, authData.Password)
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	
+
+	token, err := auth.MakeJWT(userInfo.ID, cfg.secretJWT, time.Second*time.Duration(authData.Expires))
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	refreshToken, _ := auth.MakeRefreshToken()
+	args := database.CreateRefreshTokenParams{
+		Token:     refreshToken,
+		UserID:    userInfo.ID,
+		ExpiresAt: time.Now().Add(time.Hour * 1440),
+	}
+	err = cfg.queries.CreateRefreshToken(r.Context(), args)
+	if err != nil {
+		fmt.Println(refreshToken)
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
 	respData := User{
-		ID: userInfo.ID,
-		CreatedAt: userInfo.CreatedAt.Time,
-		UpdatedAt: userInfo.UpdatedAt.Time,
-		Email: userInfo.Email,
+		ID:           userInfo.ID,
+		CreatedAt:    userInfo.CreatedAt.Time,
+		UpdatedAt:    userInfo.UpdatedAt.Time,
+		Email:        userInfo.Email,
+		Token:        token,
+		RefreshToken: refreshToken,
 	}
 	respJson, err := json.Marshal(respData)
 	if err != nil {
@@ -320,4 +357,72 @@ func (cfg *apiConfig) HandlerLogin(w http.ResponseWriter, r *http.Request){
 
 	w.WriteHeader(http.StatusOK)
 	w.Write(respJson)
+}
+
+func (cfg *apiConfig) HandlerRefresh(w http.ResponseWriter, r *http.Request) {
+	type response struct {
+		Token string `json:"token"`
+	}
+
+	refreshToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	userToken, err := cfg.queries.GetUserFromRefreshToken(r.Context(), refreshToken)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+	if userToken.RevokedAt.Valid || userToken.ExpiresAt.Before(time.Now()) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	newAccessToken, err := auth.MakeJWT(userToken.UserID, cfg.secretJWT, time.Hour)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	respToken := response{
+		Token: newAccessToken,
+	}
+	respData, err := json.Marshal(respToken)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.Write(respData)
+}
+
+func (cfg *apiConfig) HandlerRevoke(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	refreshToken, err := cfg.queries.GetUserFromRefreshToken(r.Context(), token)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	err = cfg.queries.RevokeRefreshToken(r.Context(), refreshToken.UserID)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.WriteHeader(204)
 }
