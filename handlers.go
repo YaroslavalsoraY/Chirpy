@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/YaroslavalsoraY/Chirpy/internal/auth"
 	"github.com/YaroslavalsoraY/Chirpy/internal/database"
 	"github.com/google/uuid"
 )
@@ -48,18 +49,18 @@ func (cfg *apiConfig) HandlerReset(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) HandlerCreateChirp(w http.ResponseWriter, r *http.Request) {
 	type chirp struct {
-		Text string `json:"body"`
+		Text   string    `json:"body"`
 		UserID uuid.UUID `json:"user_id"`
 	}
 
 	type returnJson struct {
-		InValid bool   `json:"valid,omitempty"`
-		Err   string `json:"error,omitempty"`
-		Body string `json:"body,omitempty"`
+		InValid   bool      `json:"valid,omitempty"`
+		Err       string    `json:"error,omitempty"`
+		Body      string    `json:"body,omitempty"`
 		CreatedAt time.Time `json:"created_at,omitempty"`
 		UpdatedAt time.Time `json:"updated_at,omitempty"`
-		ID    uuid.UUID    `json:"id,omitempty"`
-		UserID uuid.UUID `json:"user_id,omitempty"`
+		ID        uuid.UUID `json:"id,omitempty"`
+		UserID    uuid.UUID `json:"user_id,omitempty"`
 	}
 
 	if r.Method != http.MethodPost {
@@ -75,8 +76,10 @@ func (cfg *apiConfig) HandlerCreateChirp(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	newChirp.Text = badWordsReplace(newChirp.Text)
+
 	resp := returnJson{
-		Err:   "",
+		Err:     "",
 		InValid: false,
 	}
 
@@ -101,7 +104,7 @@ func (cfg *apiConfig) HandlerCreateChirp(w http.ResponseWriter, r *http.Request)
 	}
 
 	arg := database.InsertChirpParams{
-		Body: newChirp.Text,
+		Body:   newChirp.Text,
 		UserID: newChirp.UserID,
 	}
 	returnedChirp, err := cfg.queries.InsertChirp(r.Context(), arg)
@@ -112,11 +115,11 @@ func (cfg *apiConfig) HandlerCreateChirp(w http.ResponseWriter, r *http.Request)
 	}
 
 	response := returnJson{
-		ID: returnedChirp.ID,
+		ID:        returnedChirp.ID,
 		CreatedAt: returnedChirp.CreatedAt,
 		UpdatedAt: returnedChirp.UpdatedAt,
-		Body: returnedChirp.Body,
-		UserID: returnedChirp.UserID,
+		Body:      returnedChirp.Body,
+		UserID:    returnedChirp.UserID,
 	}
 
 	respBody, err = json.Marshal(response)
@@ -126,9 +129,83 @@ func (cfg *apiConfig) HandlerCreateChirp(w http.ResponseWriter, r *http.Request)
 	return
 }
 
+func (cfg *apiConfig) HandlerGetOneChirp(w http.ResponseWriter, r *http.Request) {
+	type returnChirp struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
+	}
+
+	chirpID, err := uuid.Parse(r.PathValue("chirpID"))
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	chirp, err := cfg.queries.GetOneChirp(r.Context(), chirpID)
+
+	respChirp := returnChirp{
+		ID: chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body: chirp.Body,
+		UserID: chirp.UserID,
+	}
+
+	respData, err := json.Marshal(respChirp)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.Write(respData)
+}
+
+func (cfg *apiConfig) HandlerGetChirps(w http.ResponseWriter, r *http.Request) {
+	type returnChirp struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
+	}
+
+	returnChirps := []returnChirp{}
+
+	chirps, err := cfg.queries.GetAllChirps(r.Context())
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+	for _, el := range chirps {
+		returnChirps = append(returnChirps, returnChirp{
+			ID: el.ID,
+			CreatedAt: el.CreatedAt,
+			UpdatedAt: el.UpdatedAt,
+			Body: el.Body,
+			UserID: el.UserID,
+		})
+	}
+
+	resp, err := json.Marshal(returnChirps)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.Write(resp)
+}
+
 func (cfg *apiConfig) HandlerAddUser(w http.ResponseWriter, r *http.Request) {
 	type info struct {
 		Email string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	type User struct {
@@ -137,7 +214,6 @@ func (cfg *apiConfig) HandlerAddUser(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt time.Time `json:"updated_at"`
 		Email     string    `json:"email"`
 	}
-
 
 	if r.Method != http.MethodPost {
 		w.WriteHeader(500)
@@ -155,7 +231,19 @@ func (cfg *apiConfig) HandlerAddUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newUser, err := cfg.queries.CreateUser(r.Context(), user.Email)
+	hash, err := auth.HashPassword(user.Password)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	args := database.CreateUserParams{
+		Email: user.Email,
+		HashedPassword: hash,
+	}
+
+	newUser, err := cfg.queries.CreateUser(r.Context(), args)
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(500)
@@ -163,10 +251,10 @@ func (cfg *apiConfig) HandlerAddUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respUser := User{
-		ID: newUser.ID,
+		ID:        newUser.ID,
 		CreatedAt: newUser.CreatedAt.Time,
 		UpdatedAt: newUser.UpdatedAt.Time,
-		Email: newUser.Email,
+		Email:     newUser.Email,
 	}
 
 	resp, err := json.Marshal(respUser)
@@ -179,4 +267,57 @@ func (cfg *apiConfig) HandlerAddUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(201)
 	w.Write(resp)
 	return
+}
+
+func (cfg *apiConfig) HandlerLogin(w http.ResponseWriter, r *http.Request){
+	type insertData struct{
+		Password string `json:"password"`
+		Email    string `json:"email"`
+	}
+
+	type User struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	authData := insertData{}
+	err := decoder.Decode(&authData)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	userInfo, err := cfg.queries.GetUserHashedPassword(r.Context(), authData.Email)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	
+	err = auth.CheckPasswordHash(userInfo.HashedPassword, authData.Password)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	
+	respData := User{
+		ID: userInfo.ID,
+		CreatedAt: userInfo.CreatedAt.Time,
+		UpdatedAt: userInfo.UpdatedAt.Time,
+		Email: userInfo.Email,
+	}
+	respJson, err := json.Marshal(respData)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(respJson)
 }
