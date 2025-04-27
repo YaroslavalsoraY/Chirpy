@@ -223,10 +223,11 @@ func (cfg *apiConfig) HandlerAddUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type User struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
+		ID        	uuid.UUID `json:"id"`
+		CreatedAt 	time.Time `json:"created_at"`
+		UpdatedAt 	time.Time `json:"updated_at"`
+		Email     	string    `json:"email"`
+		IsChirpyRed bool      `json:"is_chirpy_red"`
 	}
 
 	if r.Method != http.MethodPost {
@@ -269,6 +270,7 @@ func (cfg *apiConfig) HandlerAddUser(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: newUser.CreatedAt.Time,
 		UpdatedAt: newUser.UpdatedAt.Time,
 		Email:     newUser.Email,
+		IsChirpyRed: false,
 	}
 
 	resp, err := json.Marshal(respUser)
@@ -297,6 +299,7 @@ func (cfg *apiConfig) HandlerLogin(w http.ResponseWriter, r *http.Request) {
 		Email        string    `json:"email"`
 		Token        string    `json:"token"`
 		RefreshToken string    `json:"refresh_token"`
+		IsChirpyRed  bool  	   `json:"is_chirpy_red"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -352,6 +355,7 @@ func (cfg *apiConfig) HandlerLogin(w http.ResponseWriter, r *http.Request) {
 		Email:        userInfo.Email,
 		Token:        token,
 		RefreshToken: refreshToken,
+		IsChirpyRed:  userInfo.IsChirpyRed.Bool,
 	}
 	respJson, err := json.Marshal(respData)
 	if err != nil {
@@ -539,6 +543,40 @@ func (cfg *apiConfig) DeleteChirp(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(500)
+		return
+	}
+
+	w.WriteHeader(204)
+}
+
+func (cfg *apiConfig) HandlerPolka(w http.ResponseWriter, r *http.Request) {
+	type data struct {
+		UserID uuid.UUID `json:"user_id"`
+	}
+
+	type req struct {
+		Event string `json:"event"`
+		Data  data   `json:"data"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	insertData := req{}
+	err := decoder.Decode(&insertData)
+	if err != nil{
+		fmt.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if insertData.Event != "user.upgraded" {
+		w.WriteHeader(204)
+		return
+	}
+
+	err = cfg.queries.SetChirpyRed(r.Context(), insertData.Data.UserID)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 

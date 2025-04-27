@@ -58,6 +58,7 @@ func main() {
 	mux.HandleFunc("POST /api/login", conf.HandlerLogin)
 	mux.HandleFunc("POST /api/refresh", conf.HandlerRefresh)
 	mux.HandleFunc("POST /api/revoke", conf.HandlerRevoke)
+	mux.HandleFunc("POST /api/polka/webhooks", conf.HandlerPolka)
 
 	mux.HandleFunc("PUT /api/users", conf.HandlerUpdateUser)
 
