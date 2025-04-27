@@ -196,7 +196,22 @@ func (cfg *apiConfig) HandlerGetChirps(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		return
 	}
+
+	authorID := uuid.Nil
+	authorIDstring := r.URL.Query().Get("author_id")
+	if authorIDstring != "" {
+		authorID, err = uuid.Parse(authorIDstring)
+		if err != nil {
+			fmt.Println(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}
+
 	for _, el := range chirps {
+		if authorID != uuid.Nil && el.UserID != authorID {
+			continue
+		}
 		returnChirps = append(returnChirps, returnChirp{
 			ID:        el.ID,
 			CreatedAt: el.CreatedAt,
@@ -559,9 +574,16 @@ func (cfg *apiConfig) HandlerPolka(w http.ResponseWriter, r *http.Request) {
 		Data  data   `json:"data"`
 	}
 
+	keyAPI, err := auth.GetPolkaAPI(r.Header)
+	if err != nil || keyAPI != cfg.polkaKey {
+		fmt.Println(err)
+		w.WriteHeader(401)
+		return
+	}
+
 	decoder := json.NewDecoder(r.Body)
 	insertData := req{}
-	err := decoder.Decode(&insertData)
+	err = decoder.Decode(&insertData)
 	if err != nil{
 		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)

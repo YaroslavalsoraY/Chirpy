@@ -18,6 +18,7 @@ type apiConfig struct {
 	queries        *database.Queries
 	platform       string
 	secretJWT      string
+	polkaKey	   string
 }
 
 func main() {
@@ -33,11 +34,14 @@ func main() {
 
 	secretJWT := os.Getenv("SECRET_JWT")
 
+	polkaApi := os.Getenv("POLKA_KEY")
+
 	conf := apiConfig{
 		fileserverHits: atomic.Int32{},
 		queries:        database.New(db),
 		platform:       envPlatform,
 		secretJWT:      secretJWT,
+		polkaKey:		polkaApi,
 	}
 
 	baseHandler := http.FileServer(http.Dir("."))
@@ -48,7 +52,7 @@ func main() {
 
 	mux.HandleFunc("GET /api/healthz", HandlerHealtzh)
 	mux.HandleFunc("GET /admin/metrics", conf.HandlerMetrics)
-	mux.HandleFunc("GET /api/chirps/", conf.HandlerGetChirps)
+	mux.HandleFunc("GET /api/chirps", conf.HandlerGetChirps)
 	mux.HandleFunc("GET /api/chirps/{chirpID}", conf.HandlerGetOneChirp)
 
 	mux.HandleFunc("POST /admin/reset", conf.HandlerReset)
