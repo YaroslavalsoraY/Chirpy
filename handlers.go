@@ -155,6 +155,11 @@ func (cfg *apiConfig) HandlerGetOneChirp(w http.ResponseWriter, r *http.Request)
 	}
 
 	chirp, err := cfg.queries.GetOneChirp(r.Context(), chirpID)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
 
 	respChirp := returnChirp{
 		ID:        chirp.ID,
@@ -418,6 +423,119 @@ func (cfg *apiConfig) HandlerRevoke(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = cfg.queries.RevokeRefreshToken(r.Context(), refreshToken.UserID)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.WriteHeader(204)
+}
+
+func (cfg *apiConfig) HandlerUpdateUser(w http.ResponseWriter, r *http.Request) {
+	type authorizationInfo struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	type User struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	insertData := authorizationInfo{}
+	err := decoder.Decode(&insertData)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+	
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	realUserID, err := auth.ValidateJWT(token, cfg.secretJWT)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	hashedPassword, err := auth.HashPassword(insertData.Password)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	args := database.UpdateEmailPasswordParams{
+		Email: insertData.Email,
+		HashedPassword: hashedPassword,
+		ID: realUserID,
+	}
+	user, err := cfg.queries.UpdateEmailPassword(r.Context(), args)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	returnUser := User{
+		ID: args.ID,
+		CreatedAt: user.CreatedAt.Time,
+		UpdatedAt: user.UpdatedAt.Time,
+		Email: args.Email,
+	}
+	respData, err := json.Marshal(returnUser)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.Write(respData)
+}
+
+func (cfg *apiConfig) DeleteChirp(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	userID, err := auth.ValidateJWT(token, cfg.secretJWT)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	chirpID, err := uuid.Parse(r.PathValue("chirpID"))
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	chirp, err := cfg.queries.GetOneChirp(r.Context(), chirpID)
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	if chirp.UserID != userID {
+		w.WriteHeader(403)
+		return
+	}
+
+	err = cfg.queries.DeleteChirp(r.Context(), chirpID)
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(500)
