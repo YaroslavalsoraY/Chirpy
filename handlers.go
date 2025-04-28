@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/YaroslavalsoraY/Chirpy/internal/auth"
@@ -208,6 +209,11 @@ func (cfg *apiConfig) HandlerGetChirps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	sortingMethod := r.URL.Query().Get("sort")
+	if sortingMethod == "" {
+		sortingMethod = "asc"
+	}
+
 	for _, el := range chirps {
 		if authorID != uuid.Nil && el.UserID != authorID {
 			continue
@@ -219,6 +225,10 @@ func (cfg *apiConfig) HandlerGetChirps(w http.ResponseWriter, r *http.Request) {
 			Body:      el.Body,
 			UserID:    el.UserID,
 		})
+	}
+
+	if sortingMethod == "desc" {
+		sort.Slice(returnChirps, func(i, j int) bool {return returnChirps[i].CreatedAt.After(returnChirps[j].CreatedAt)})
 	}
 
 	resp, err := json.Marshal(returnChirps)
