@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -18,7 +17,7 @@ type apiConfig struct {
 	queries        *database.Queries
 	platform       string
 	secretJWT      string
-	polkaKey	   string
+	polkaKey       string
 }
 
 func main() {
@@ -41,7 +40,7 @@ func main() {
 		queries:        database.New(db),
 		platform:       envPlatform,
 		secretJWT:      secretJWT,
-		polkaKey:		polkaApi,
+		polkaKey:       polkaApi,
 	}
 
 	baseHandler := http.FileServer(http.Dir("."))
@@ -78,16 +77,4 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-}
-
-func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cfg.fileserverHits.Add(1)
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (cfg *apiConfig) reset(cont context.Context) {
-	cfg.fileserverHits.Swap(0)
-	cfg.queries.DeleteAllUsers(cont)
 }
